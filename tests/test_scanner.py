@@ -3,7 +3,13 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from sortdocs.scanner import DirectoryScanner, ScannerOptions
+import pytest
+
+from sortdocs.scanner import (
+    DirectoryScanner,
+    ProjectRootDetectedError,
+    ScannerOptions,
+)
 
 
 def test_scanner_base_scan_returns_discovered_file_metadata(tmp_path: Path) -> None:
@@ -126,3 +132,76 @@ def test_scanner_skips_managed_output_directories_by_default(tmp_path: Path) -> 
     discovered = DirectoryScanner(ScannerOptions(recursive=True, include_unsupported=True)).scan(tmp_path)
 
     assert [item.relative_path for item in discovered] == [Path("Inbox.txt")]
+
+
+def test_scanner_refuses_project_like_root_by_default(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "README.md").write_text("project", encoding="utf-8")
+
+    with pytest.raises(ProjectRootDetectedError, match="looks like a software project|Refusing to scan"):
+        DirectoryScanner().scan(tmp_path)
+
+
+def test_scanner_allows_project_like_root_when_explicitly_enabled(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "README.md").write_text("project", encoding="utf-8")
+
+    discovered = DirectoryScanner(ScannerOptions(allow_project_root=True)).scan(tmp_path)
+
+    assert [item.relative_path for item in discovered] == [Path("README.md")]
+
+
+def test_scanner_skips_nested_project_subtrees_and_reports_them(tmp_path: Path) -> None:
+    (tmp_path / "notes.txt").write_text("keep", encoding="utf-8")
+    project_dir = tmp_path / "my-app"
+    project_dir.mkdir()
+    (project_dir / "package.json").write_text('{"name":"app"}', encoding="utf-8")
+    (project_dir / "src.txt").write_text("skip", encoding="utf-8")
+
+    report = DirectoryScanner(ScannerOptions(recursive=True)).scan_report(tmp_path)
+
+    assert [item.relative_path for item in report.discovered_files] == [Path("notes.txt")]
+    assert len(report.skipped_directories) == 1
+    assert report.skipped_directories[0].relative_path == Path("my-app")
+    assert "software project" in report.skipped_directories[0].reason
+
+
+def test_scanner_skips_common_protected_project_directories(tmp_path: Path) -> None:
+    (tmp_path / "notes.txt").write_text("keep", encoding="utf-8")
+    node_modules_dir = tmp_path / "node_modules"
+    node_modules_dir.mkdir()
+    (node_modules_dir / "dependency.txt").write_text("skip", encoding="utf-8")
+
+    report = DirectoryScanner(ScannerOptions(recursive=True)).scan_report(tmp_path)
+
+    assert [item.relative_path for item in report.discovered_files] == [Path("notes.txt")]
+    assert len(report.skipped_directories) == 1
+    assert report.skipped_directories[0].relative_path == Path("node_modules")
+    assert "Protected project/build directory" in report.skipped_directories[0].reason
+
+
+def test_scanner_skips_paths_matched_by_excluded_patterns(tmp_path: Path) -> None:
+    (tmp_path / "keep.txt").write_text("keep", encoding="utf-8")
+    excluded_dir = tmp_path / "Screenshots"
+    excluded_dir.mkdir()
+    (excluded_dir / "image.png").write_text("skip", encoding="utf-8")
+
+    report = DirectoryScanner(
+        ScannerOptions(recursive=True, excluded_patterns=("Screenshots",))
+    ).scan_report(tmp_path)
+
+    assert [item.relative_path for item in report.discovered_files] == [Path("keep.txt")]
+    assert len(report.skipped_directories) == 1
+    assert report.skipped_directories[0].relative_path == Path("Screenshots")
+    assert "Excluded by ignore pattern" in report.skipped_directories[0].reason
+
+
+def test_scanner_skips_files_matched_by_glob_patterns(tmp_path: Path) -> None:
+    (tmp_path / "keep.txt").write_text("keep", encoding="utf-8")
+    (tmp_path / "photo.heic").write_text("skip", encoding="utf-8")
+
+    discovered = DirectoryScanner(
+        ScannerOptions(excluded_patterns=("*.heic",), include_unsupported=True)
+    ).scan(tmp_path)
+
+    assert [item.relative_path for item in discovered] == [Path("keep.txt")]

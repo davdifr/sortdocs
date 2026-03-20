@@ -19,6 +19,8 @@ The workflow is intentionally simple:
 - guardrails for renames, extensions, path traversal, and collisions
 - conservative fallback behavior for weak or ambiguous files
 - local memory to improve path reuse across runs
+- explicit ignore rules via config or `.sortdocsignore`
+- incremental classification cache for unchanged files
 
 ## Requirements
 
@@ -100,6 +102,18 @@ This command:
 - asks `Proceed with these actions?`
 - applies changes only if you confirm
 
+### Ignore Paths Explicitly
+
+You can place a `.sortdocsignore` file in the root you are organizing:
+
+```text
+Projects
+Obsidian
+*.heic
+```
+
+This is useful for folders or file types that should never be touched, even if they are not software projects.
+
 ### Preview Without Changes
 
 ```bash
@@ -146,6 +160,12 @@ cli:
     library_dir: '.'
     max_files_per_run: 100
 
+scanner:
+    ignore_filename: '.sortdocsignore'
+    exclude:
+        - 'Projects'
+        - '*.heic'
+
 extraction:
     max_excerpt_chars: 4000
 
@@ -168,6 +188,8 @@ Main fields:
 - `cli.review_dir`
 - `cli.library_dir`
 - `cli.max_files_per_run`
+- `scanner.ignore_filename`
+- `scanner.exclude`
 - `extraction.max_excerpt_chars`
 - `openai.model`
 - `openai.temperature`
@@ -199,6 +221,12 @@ For files with weak evidence:
 - confidence is lowered
 - the file may stay in place with `skip` or `review`
 - scanned PDFs can use a visual fallback through OpenAI when no text is extractable
+
+For repeat runs:
+
+- `sortdocs` stores a local `.sortdocs-state.json` cache for unchanged files
+- unchanged files can skip extraction and reclassification entirely
+- the cache is invalidated automatically when relevant AI/planner settings change
 
 ## Logging
 

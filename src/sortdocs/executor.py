@@ -5,10 +5,10 @@ import json
 import logging
 import shutil
 import uuid
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Callable, Iterable, Optional
 
 from sortdocs.guardrails import validate_planned_action
 from sortdocs.models import (
@@ -35,18 +35,43 @@ class FileOperationMode(str, Enum):
     COPY = "copy"
 
 
+class ExecutionStage(str, Enum):
+    RUNNING = "running"
+    COMPLETE = "complete"
+
+
+@dataclass(frozen=True)
+class ExecutionProgressEvent:
+    stage: ExecutionStage
+    current: int
+    total: int
+    action: PlannedAction
+    result: Optional[ExecutionResult] = None
+
+
 class PlanExecutor:
+    @staticmethod
+    def _emit_progress(
+        callback: Optional[Callable[[ExecutionProgressEvent], None]],
+        event: ExecutionProgressEvent,
+    ) -> None:
+        if callback is None:
+            return
+        callback(event)
+
     def execute(
         self,
         actions: list[PlannedAction],
         *,
         dry_run: bool,
         operation_mode: FileOperationMode = FileOperationMode.MOVE,
+        progress_callback: Optional[Callable[[ExecutionProgressEvent], None]] = None,
     ) -> ExecutionReport:
         results: list[ExecutionResult] = []
         seen_sources: set[Path] = set()
+        total_actions = len(actions)
 
-        for action in actions:
+        for index, action in enumerate(actions, start=1):
             result = self._execute_action(
                 action=action,
                 dry_run=dry_run,
@@ -54,8 +79,18 @@ class PlanExecutor:
                 seen_sources=seen_sources,
             )
             results.append(result)
+            self._emit_progress(
+                progress_callback,
+                ExecutionProgressEvent(
+                    stage=ExecutionStage.RUNNING,
+                    current=index,
+                    total=total_actions,
+                    action=action,
+                    result=result,
+                ),
+            )
 
-        return ExecutionReport(
+        report = ExecutionReport(
             dry_run=dry_run,
             copy_mode=operation_mode == FileOperationMode.COPY,
             results=results,
@@ -63,6 +98,18 @@ class PlanExecutor:
             metrics=_build_metrics(results),
             errors=_build_errors(results),
         )
+        if actions:
+            self._emit_progress(
+                progress_callback,
+                ExecutionProgressEvent(
+                    stage=ExecutionStage.COMPLETE,
+                    current=total_actions,
+                    total=total_actions,
+                    action=actions[-1],
+                    result=results[-1],
+                ),
+            )
+        return report
 
     def write_report(
         self,

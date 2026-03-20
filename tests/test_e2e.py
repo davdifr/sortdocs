@@ -390,3 +390,261 @@ def test_e2e_persists_local_memory_and_reuses_it_in_next_run(tmp_path: Path) -> 
     local_memory = second_calls[0]["local_memory_hints"]
     assert local_memory["memory_file"] == ".sortdocs-memory.json"
     assert local_memory["filename_token_hints"][0]["target_path"] == "travel_documents/flight_tickets"
+
+
+def test_e2e_skips_unchanged_files_using_processing_state_cache(tmp_path: Path) -> None:
+    documents_dir = tmp_path / "Documents"
+    documents_dir.mkdir()
+    source_file = documents_dir / "invoice.txt"
+    source_file.write_text("Invoice 2026-03", encoding="utf-8")
+
+    first_run_calls: list[str] = []
+    second_run_calls: list[str] = []
+
+    class FirstRunClient:
+        def __init__(self, config: SortdocsConfig) -> None:
+            self._config = config
+
+        def classify_file(
+            self,
+            extracted_content,
+            original_filename: str,
+            relative_path: str | Path,
+            directory_context=None,
+            absolute_path=None,
+        ) -> ClassificationResult:
+            first_run_calls.append(original_filename)
+            return ClassificationResult.model_validate(
+                {
+                    "category": "Finance",
+                    "subcategory": "Invoices",
+                    "suggested_path": "finance/invoices",
+                    "suggested_filename": "invoice",
+                    "confidence": 0.96,
+                    "reason": "Clearly an invoice.",
+                    "tags": ["invoice"],
+                    "needs_review": False,
+                }
+            )
+
+    SortdocsPipeline(
+        make_config(),
+        library_dir=documents_dir,
+        review_dir=documents_dir,
+        ai_client_factory=FirstRunClient,
+    ).run_directory(documents_dir, dry_run=False, recursive=True)
+
+    assert first_run_calls == ["invoice.txt"]
+    assert (documents_dir / ".sortdocs-state.json").exists()
+    assert (documents_dir / "finance" / "invoices" / "invoice.txt").exists()
+
+    class SecondRunClient:
+        def __init__(self, config: SortdocsConfig) -> None:
+            self._config = config
+
+        def classify_file(
+            self,
+            extracted_content,
+            original_filename: str,
+            relative_path: str | Path,
+            directory_context=None,
+            absolute_path=None,
+        ) -> ClassificationResult:
+            second_run_calls.append(original_filename)
+            return ClassificationResult.model_validate(
+                {
+                    "category": "Finance",
+                    "subcategory": "Invoices",
+                    "suggested_path": "finance/invoices",
+                    "suggested_filename": "invoice",
+                    "confidence": 0.96,
+                    "reason": "Clearly an invoice.",
+                    "tags": ["invoice"],
+                    "needs_review": False,
+                }
+            )
+
+    plan = SortdocsPipeline(
+        make_config(),
+        library_dir=documents_dir,
+        review_dir=documents_dir,
+        ai_client_factory=SecondRunClient,
+    ).plan_directory(documents_dir, recursive=True)
+
+    assert plan.cache_hits == 1
+    assert second_run_calls == []
+    assert len(plan.actions) == 1
+    assert plan.actions[0].action_type == ActionType.SKIP
+
+
+def test_e2e_skips_nested_project_subtrees_without_aborting(tmp_path: Path) -> None:
+    documents_dir = tmp_path / "Documents"
+    documents_dir.mkdir()
+    (documents_dir / "notes.txt").write_text("Travel notes", encoding="utf-8")
+    project_dir = documents_dir / "my-app"
+    project_dir.mkdir()
+    (project_dir / "package.json").write_text('{"name":"app"}', encoding="utf-8")
+    (project_dir / "README.md").write_text("Should not be touched", encoding="utf-8")
+
+    class FakeOpenAIClassificationClient:
+        def __init__(self, config: SortdocsConfig) -> None:
+            self._config = config
+
+        def classify_file(
+            self,
+            extracted_content,
+            original_filename: str,
+            relative_path: str | Path,
+            directory_context=None,
+            absolute_path=None,
+        ) -> ClassificationResult:
+            return ClassificationResult.model_validate(
+                {
+                    "category": "Reference",
+                    "subcategory": "Notes",
+                    "suggested_path": "reference/notes",
+                    "suggested_filename": "notes",
+                    "confidence": 0.86,
+                    "reason": "Looks like notes.",
+                    "tags": ["notes"],
+                    "needs_review": False,
+                }
+            )
+
+    plan = SortdocsPipeline(
+        make_config(),
+        library_dir=documents_dir,
+        review_dir=documents_dir,
+        ai_client_factory=FakeOpenAIClassificationClient,
+    ).plan_directory(documents_dir, recursive=True)
+
+    assert [item.relative_path for item in plan.discovered_files] == [Path("notes.txt")]
+    assert len(plan.skipped_directories) == 1
+    assert plan.skipped_directories[0].relative_path == Path("my-app")
+
+
+def test_e2e_respects_sortdocsignore_patterns(tmp_path: Path) -> None:
+    documents_dir = tmp_path / "Documents"
+    documents_dir.mkdir()
+    (documents_dir / ".sortdocsignore").write_text("Screenshots\n*.heic\n", encoding="utf-8")
+    (documents_dir / "invoice.txt").write_text("Invoice 2026-03", encoding="utf-8")
+    screenshots_dir = documents_dir / "Screenshots"
+    screenshots_dir.mkdir()
+    (screenshots_dir / "capture.png").write_text("skip", encoding="utf-8")
+    (documents_dir / "photo.heic").write_text("skip", encoding="utf-8")
+
+    class FakeOpenAIClassificationClient:
+        def __init__(self, config: SortdocsConfig) -> None:
+            self._config = config
+
+        def classify_file(
+            self,
+            extracted_content,
+            original_filename: str,
+            relative_path: str | Path,
+            directory_context=None,
+            absolute_path=None,
+        ) -> ClassificationResult:
+            return ClassificationResult.model_validate(
+                {
+                    "category": "Finance",
+                    "subcategory": "Invoices",
+                    "suggested_path": "finance/invoices",
+                    "suggested_filename": "invoice",
+                    "confidence": 0.96,
+                    "reason": "Clearly an invoice.",
+                    "tags": ["invoice"],
+                    "needs_review": False,
+                }
+            )
+
+    plan = SortdocsPipeline(
+        make_config(),
+        library_dir=documents_dir,
+        review_dir=documents_dir,
+        ai_client_factory=FakeOpenAIClassificationClient,
+    ).plan_directory(documents_dir, recursive=True)
+
+    assert [item.relative_path for item in plan.discovered_files] == [Path("invoice.txt")]
+    assert len(plan.skipped_directories) == 1
+    assert plan.skipped_directories[0].relative_path == Path("Screenshots")
+
+
+def test_e2e_reprocesses_files_when_classification_signature_changes(tmp_path: Path) -> None:
+    documents_dir = tmp_path / "Documents"
+    documents_dir.mkdir()
+    source_file = documents_dir / "invoice.txt"
+    source_file.write_text("Invoice 2026-03", encoding="utf-8")
+
+    first_run_calls: list[str] = []
+    second_run_calls: list[str] = []
+
+    class FirstRunClient:
+        def __init__(self, config: SortdocsConfig) -> None:
+            self._config = config
+
+        def classify_file(
+            self,
+            extracted_content,
+            original_filename: str,
+            relative_path: str | Path,
+            directory_context=None,
+            absolute_path=None,
+        ) -> ClassificationResult:
+            first_run_calls.append(original_filename)
+            return ClassificationResult.model_validate(
+                {
+                    "category": "Finance",
+                    "subcategory": "Invoices",
+                    "suggested_path": "finance/invoices",
+                    "suggested_filename": "invoice",
+                    "confidence": 0.96,
+                    "reason": "Clearly an invoice.",
+                    "tags": ["invoice"],
+                    "needs_review": False,
+                }
+            )
+
+    SortdocsPipeline(
+        make_config(openai={"model": "gpt-4.1-mini"}),
+        library_dir=documents_dir,
+        review_dir=documents_dir,
+        ai_client_factory=FirstRunClient,
+    ).run_directory(documents_dir, dry_run=False, recursive=True)
+
+    class SecondRunClient:
+        def __init__(self, config: SortdocsConfig) -> None:
+            self._config = config
+
+        def classify_file(
+            self,
+            extracted_content,
+            original_filename: str,
+            relative_path: str | Path,
+            directory_context=None,
+            absolute_path=None,
+        ) -> ClassificationResult:
+            second_run_calls.append(original_filename)
+            return ClassificationResult.model_validate(
+                {
+                    "category": "Finance",
+                    "subcategory": "Invoices",
+                    "suggested_path": "finance/invoices",
+                    "suggested_filename": "invoice",
+                    "confidence": 0.96,
+                    "reason": "Clearly an invoice.",
+                    "tags": ["invoice"],
+                    "needs_review": False,
+                }
+            )
+
+    plan = SortdocsPipeline(
+        make_config(openai={"model": "gpt-5-mini"}),
+        library_dir=documents_dir,
+        review_dir=documents_dir,
+        ai_client_factory=SecondRunClient,
+    ).plan_directory(documents_dir, recursive=True)
+
+    assert first_run_calls == ["invoice.txt"]
+    assert second_run_calls == ["invoice.txt"]
+    assert plan.cache_hits == 0

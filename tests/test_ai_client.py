@@ -14,6 +14,7 @@ from sortdocs.ai_client import (
     ResponseValidationError,
     RetryableAIClientError,
     SYSTEM_PROMPT,
+    build_classification_signature,
     classify_file,
 )
 from sortdocs.config import SortdocsConfig
@@ -370,3 +371,10 @@ def test_classify_file_attaches_pdf_input_for_visual_fallback(tmp_path: Path) ->
 
 def test_system_prompt_requires_english_naming() -> None:
     assert "Use English for category, subcategory, suggested_path, suggested_filename, and tags" in SYSTEM_PROMPT
+
+
+def test_classification_signature_changes_when_model_changes() -> None:
+    base_config = SortdocsConfig.model_validate({"openai": {"model": "gpt-4.1-mini"}})
+    changed_config = SortdocsConfig.model_validate({"openai": {"model": "gpt-5-mini"}})
+
+    assert build_classification_signature(base_config) != build_classification_signature(changed_config)

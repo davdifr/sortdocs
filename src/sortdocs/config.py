@@ -89,6 +89,48 @@ class ExtractionSettings(BaseModel):
         return self.max_chars
 
 
+class ScannerSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    exclude_patterns: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("exclude_patterns", "exclude"),
+    )
+    ignore_filename: str = ".sortdocsignore"
+
+    @field_validator("exclude_patterns")
+    @classmethod
+    def normalize_exclude_patterns(cls, value: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+
+        for raw_item in value:
+            if not isinstance(raw_item, str):
+                raise ValueError("Exclude patterns must be strings.")
+            cleaned = raw_item.strip().replace("\\", "/")
+            if not cleaned:
+                raise ValueError("Exclude patterns cannot be blank.")
+            if cleaned in seen:
+                continue
+            seen.add(cleaned)
+            normalized.append(cleaned)
+
+        return normalized
+
+    @field_validator("ignore_filename")
+    @classmethod
+    def validate_ignore_filename(cls, value: str) -> str:
+        filename = value.strip()
+        if not filename:
+            raise ValueError("Ignore filename cannot be blank.")
+        path = Path(filename)
+        if path.is_absolute():
+            raise ValueError("Ignore filename must be relative.")
+        if any(part == ".." for part in path.parts):
+            raise ValueError("Ignore filename cannot traverse parent directories.")
+        return filename
+
+
 class OpenAISettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -121,6 +163,26 @@ class MemorySettings(BaseModel):
             raise ValueError("Memory filename must be relative.")
         if any(part == ".." for part in path.parts):
             raise ValueError("Memory filename cannot traverse parent directories.")
+        return filename
+
+
+class StateSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    filename: str = ".sortdocs-state.json"
+
+    @field_validator("filename")
+    @classmethod
+    def validate_filename(cls, value: str) -> str:
+        filename = value.strip()
+        if not filename:
+            raise ValueError("State filename cannot be blank.")
+        path = Path(filename)
+        if path.is_absolute():
+            raise ValueError("State filename must be relative.")
+        if any(part == ".." for part in path.parts):
+            raise ValueError("State filename cannot traverse parent directories.")
         return filename
 
 
@@ -208,9 +270,11 @@ class SortdocsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     cli: CLISettings = CLISettings()
+    scanner: ScannerSettings = ScannerSettings()
     extraction: ExtractionSettings = ExtractionSettings()
     openai: OpenAISettings = OpenAISettings()
     memory: MemorySettings = MemorySettings()
+    state: StateSettings = StateSettings()
     planner: PlannerSettings = PlannerSettings()
     logging: LoggingSettings = LoggingSettings()
 

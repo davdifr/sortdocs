@@ -5,6 +5,13 @@ cli:
   library_dir: "."
   max_files_per_run: 100
 
+scanner:
+  ignore_filename: ".sortdocsignore"
+  exclude:
+    - "Projects"
+    - "Obsidian"
+    - "*.heic"
+
 extraction:
   max_excerpt_chars: 4000
 
@@ -23,6 +30,10 @@ memory:
   max_token_hints: 8
   max_path_examples: 12
   max_examples_per_hint: 3
+
+state:
+  enabled: true
+  filename: ".sortdocs-state.json"
 
 planner:
   confidence_threshold: 0.65

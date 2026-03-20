@@ -15,10 +15,12 @@ from rich.table import Table
 from rich.text import Text
 
 from sortdocs.config import ConfigError, SortdocsConfig, load_config
+from sortdocs.executor import ExecutionProgressEvent, ExecutionStage
 from sortdocs.logging_utils import configure_logging
 from sortdocs.models import ExecutionReport
-from sortdocs.pipeline import PipelinePlan, PipelineResult, SortdocsPipeline
+from sortdocs.pipeline import PipelinePlan, PipelineProgressEvent, PipelineResult, SortdocsPipeline
 from sortdocs.planner import display_path
+from sortdocs.scanner import ProjectRootDetectedError
 from sortdocs.utils import limit_text
 
 
@@ -57,6 +59,7 @@ class RuntimeSettings:
     dry_run: bool
     prompt_before_apply: bool
     recursive: bool
+    allow_project_root: bool
     config_path: Optional[Path]
     review_dir: Path
     library_dir: Path
@@ -82,6 +85,11 @@ def sortdocs(
         None,
         "--recursive/--no-recursive",
         help="Enable or disable recursive scanning. Defaults to recursive.",
+    ),
+    allow_project_root: bool = typer.Option(
+        False,
+        "--allow-project-root",
+        help="Allow scanning a root folder that looks like a software project.",
     ),
     config_path: Optional[Path] = typer.Option(
         None,
@@ -130,6 +138,7 @@ def sortdocs(
             config_path=resolved_config_path,
             dry_run=dry_run,
             recursive=recursive,
+            allow_project_root=allow_project_root,
             review_dir=review_dir,
             library_dir=library_dir,
             verbose=verbose,
@@ -153,6 +162,9 @@ def sortdocs(
 
     try:
         plan = run_planning_step(pipeline, settings)
+    except ProjectRootDetectedError as exc:
+        emit_error(str(exc))
+        raise typer.Exit(code=2)
     except OSError as exc:
         LOGGER.debug("Directory scan failed.", exc_info=True)
         emit_error(f"Failed while reading {settings.source_dir}: {exc}")
@@ -194,6 +206,8 @@ def sortdocs(
         discovered_files=plan.discovered_files,
         actions=plan.actions,
         execution_report=execution_report,
+        skipped_directories=plan.skipped_directories,
+        cache_hits=plan.cache_hits,
     )
 
     render_summary(pipeline_result, settings)
@@ -221,6 +235,7 @@ def build_runtime_settings(
     config_path: Optional[Path],
     dry_run: Optional[bool],
     recursive: Optional[bool],
+    allow_project_root: bool,
     review_dir: Optional[Path],
     library_dir: Optional[Path],
     verbose: bool,
@@ -247,6 +262,7 @@ def build_runtime_settings(
         dry_run=resolved_dry_run,
         prompt_before_apply=not resolved_dry_run and not yes,
         recursive=resolved_recursive,
+        allow_project_root=allow_project_root,
         config_path=config_path,
         review_dir=resolved_review_dir,
         library_dir=resolved_library_dir,
@@ -279,6 +295,7 @@ def render_header(settings: RuntimeSettings) -> None:
     info_table.add_row("Source", str(settings.source_dir))
     info_table.add_row("Config", str(settings.config_path or "defaults"))
     info_table.add_row("Recursive", "yes" if settings.recursive else "no")
+    info_table.add_row("Project root", "allowed" if settings.allow_project_root else "protected")
     info_table.add_row("Target root", str(settings.library_dir))
     info_table.add_row("Review dir", review_mode)
     info_table.add_row("Max files", str(settings.max_files or "unlimited"))
@@ -289,16 +306,45 @@ def render_header(settings: RuntimeSettings) -> None:
 def run_planning_step(pipeline: SortdocsPipeline, settings: RuntimeSettings) -> PipelinePlan:
     console = get_console()
     console.print("[bold cyan]Analyzing files...[/bold cyan] Scanning, extracting, and classifying documents.")
-    with console.status(
-        "Building organization plan...",
-        spinner="dots",
-        spinner_style="cyan",
-    ):
+    with console.status("Scanning files...", spinner="dots", spinner_style="cyan") as status:
+        def on_progress(event: PipelineProgressEvent) -> None:
+            if event.stage == "scanning":
+                status.update(status="Scanning files...")
+                return
+            if event.stage == "scan_complete":
+                discovered = event.total or 0
+                status.update(status=f"Found {discovered} files. Starting classification...")
+                return
+            if event.stage == "classifying":
+                current_name = event.current_path.name if event.current_path is not None else "current file"
+                status.update(
+                    status=_build_status_message(
+                        prefix=f"Classifying {event.current}/{event.total or 0}",
+                        detail=current_name,
+                        suffix=f"cache hits {event.cache_hits}",
+                        console=console,
+                    )
+                )
+                return
+            if event.stage == "planning_complete":
+                status.update(status=f"Finalizing plan for {event.current} files...")
+
         plan = pipeline.plan_directory(
             settings.source_dir,
             recursive=settings.recursive,
             max_files=settings.max_files,
+            allow_project_root=settings.allow_project_root,
+            progress_callback=on_progress,
         )
+    completion_bits = [
+        f"{len(plan.discovered_files)} files analyzed",
+        f"{len(plan.actions)} planned actions",
+    ]
+    if plan.cache_hits:
+        completion_bits.append(f"{plan.cache_hits} cache hits")
+    if plan.skipped_directories:
+        completion_bits.append(f"{len(plan.skipped_directories)} protected dirs skipped")
+    console.print(f"[dim]Analysis complete:[/dim] {' • '.join(completion_bits)}")
     console.print()
     return plan
 
@@ -313,12 +359,26 @@ def run_execution_step(
         return pipeline.execute_plan(plan, dry_run=True)
 
     console.print("[bold green]Applying changes...[/bold green] Moving and renaming files safely.")
-    with console.status(
-        "Applying planned actions...",
-        spinner="line",
-        spinner_style="green",
-    ):
-        report = pipeline.execute_plan(plan, dry_run=False)
+    with console.status("Applying planned actions...", spinner="line", spinner_style="green") as status:
+        def on_progress(event: ExecutionProgressEvent) -> None:
+            if event.result is None:
+                return
+            detail = f"{event.action.action_type.value}: {event.action.target_filename}"
+            if event.result.error_code:
+                detail = f"{detail} | {event.result.error_code.lower()}"
+            if event.stage == ExecutionStage.COMPLETE:
+                status.update(status="All planned actions processed.")
+                return
+            status.update(
+                status=_build_status_message(
+                    prefix=f"Applying {event.current}/{event.total}",
+                    detail=detail,
+                    console=console,
+                )
+            )
+
+        report = pipeline.execute_plan(plan, dry_run=False, progress_callback=on_progress)
+    console.print(f"[dim]Execution complete:[/dim] {len(plan.actions)} planned actions processed")
     console.print()
     return report
 
@@ -331,6 +391,10 @@ def render_plan(result: PipelinePlan | PipelineResult, settings: RuntimeSettings
     overview.add_column()
     overview.add_row("Files discovered", str(len(result.discovered_files)))
     overview.add_row("Planned actions", str(len(result.actions)))
+    if getattr(result, "cache_hits", 0):
+        overview.add_row("Cached classifications", str(result.cache_hits))
+    if getattr(result, "skipped_directories", None):
+        overview.add_row("Protected dirs skipped", str(len(result.skipped_directories)))
     overview.add_row(
         "Action mix",
         ", ".join(
@@ -369,6 +433,24 @@ def render_plan(result: PipelinePlan | PipelineResult, settings: RuntimeSettings
         )
 
     console.print(plan_table)
+    _render_next_step_panel(result, settings)
+    skipped_directories = getattr(result, "skipped_directories", [])
+    if skipped_directories:
+        skipped_table = Table(
+            title="Protected Directories Skipped",
+            box=box.SIMPLE,
+            header_style="bold yellow",
+        )
+        skipped_table.add_column("Directory", overflow="fold")
+        skipped_table.add_column("Reason", overflow="fold")
+        for skipped in skipped_directories[:8]:
+            skipped_table.add_row(
+                display_path(skipped.absolute_path, settings.source_dir.parent),
+                limit_text(skipped.reason, 110),
+            )
+        if len(skipped_directories) > 8:
+            skipped_table.add_row("...", f"{len(skipped_directories) - 8} more protected directories")
+        console.print(skipped_table)
     console.print()
 
 
@@ -383,6 +465,10 @@ def render_summary(result: PipelineResult, settings: RuntimeSettings) -> None:
     summary.add_column()
     summary.add_row("Run mode", run_mode)
     summary.add_row("Files scanned", str(len(result.discovered_files)))
+    if result.cache_hits:
+        summary.add_row("Cache hits", str(result.cache_hits))
+    if result.skipped_directories:
+        summary.add_row("Protected dirs skipped", str(len(result.skipped_directories)))
     summary.add_row("Moved", str(report.counts.moved))
     summary.add_row("Renamed", str(report.counts.renamed))
     summary.add_row("Reviewed", str(report.counts.reviewed))
@@ -412,3 +498,44 @@ def render_errors(result: PipelineResult) -> None:
 
 def emit_error(message: str) -> None:
     get_error_console().print(f"[bold red]Error:[/bold red] {message}")
+
+
+def _render_next_step_panel(result: PipelinePlan | PipelineResult, settings: RuntimeSettings) -> None:
+    console = get_console()
+    counts = Counter(action.action_type.value for action in result.actions)
+    changed_actions = counts.get("move", 0) + counts.get("rename", 0) + counts.get("move_and_rename", 0)
+    review_actions = counts.get("review", 0)
+    skipped_actions = counts.get("skip", 0)
+
+    if settings.dry_run:
+        message = (
+            f"Preview complete. {changed_actions} file changes are planned, "
+            f"{review_actions} files need review, and {skipped_actions} will stay in place."
+        )
+        border_style = "yellow"
+        title = "Preview"
+    else:
+        message = (
+            f"Ready to apply. {changed_actions} file changes are queued, "
+            f"{review_actions} files will be routed to review, and {skipped_actions} will be skipped."
+        )
+        border_style = "green"
+        title = "Next Step"
+
+    console.print(Panel(message, border_style=border_style, title=title))
+
+
+def _build_status_message(
+    *,
+    prefix: str,
+    detail: str,
+    console: Console,
+    suffix: Optional[str] = None,
+) -> str:
+    width = getattr(console.size, "width", 100)
+    reserved = len(prefix) + len(suffix or "") + 8
+    detail_max_chars = max(20, min(72, width - reserved))
+    parts = [prefix, limit_text(detail, detail_max_chars)]
+    if suffix:
+        parts.append(suffix)
+    return " | ".join(part for part in parts if part)

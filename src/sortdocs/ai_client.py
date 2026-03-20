@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import mimetypes
@@ -88,6 +89,22 @@ Naming rules:
 
 Return only output that conforms to the provided JSON schema.
 """.strip()
+
+
+def build_classification_signature(config: SortdocsConfig) -> str:
+    payload = {
+        "system_prompt": SYSTEM_PROMPT,
+        "schema": CLASSIFICATION_JSON_SCHEMA,
+        "model": config.openai.model,
+        "temperature": config.openai.temperature,
+        "max_output_tokens": config.openai.max_output_tokens,
+        "max_excerpt_chars": config.extraction.max_chars,
+        "review_confidence_threshold": config.planner.review_confidence_threshold,
+        "allowed_categories": config.planner.allowed_categories,
+        "target_path_pattern": config.planner.target_path_pattern,
+    }
+    serialized = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 class AIClientError(RuntimeError):
