@@ -228,6 +228,32 @@ def test_planner_prefers_ai_suggested_path_when_available(tmp_path: Path) -> Non
     assert action.target_directory == tmp_path / "Documents" / "travel_documents" / "flight_tickets"
 
 
+def test_planner_drops_redundant_root_folder_segment_from_ai_path(tmp_path: Path) -> None:
+    source = tmp_path / "books" / "effective_angular.pdf"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("content", encoding="utf-8")
+
+    planner = Planner(
+        SortdocsConfig(),
+        library_dir=tmp_path / "books",
+        review_dir=tmp_path / "books",
+    )
+
+    action = planner.plan_file(
+        make_discovered_file(source, relative_path=Path("effective_angular.pdf")),
+        make_classification(
+            category="Books",
+            subcategory="Programming",
+            suggested_path="books/programming",
+            suggested_filename="effective_angular",
+        ),
+    )
+
+    assert action.target_directory == tmp_path / "books" / "programming"
+    assert "books/books" not in str(action.target_path)
+    assert any("Dropped redundant root folder segment 'books'" in warning for warning in action.warnings)
+
+
 def test_planner_harmonizes_similar_ai_suggested_paths_within_same_run(tmp_path: Path) -> None:
     source_dir = tmp_path / "Documents" / "Inbox"
     source_dir.mkdir(parents=True)
@@ -302,6 +328,48 @@ def test_planner_harmonizes_similar_ai_suggested_paths_within_same_run(tmp_path:
     assert len(target_directories) == 1
     assert next(iter(target_directories)) in expected_directories
     assert any("Aligned AI-suggested folder path" in warning for action in actions for warning in action.warnings)
+
+
+def test_planner_harmonizes_root_aware_book_paths_to_single_subject_directory(tmp_path: Path) -> None:
+    source_dir = tmp_path / "books"
+    source_dir.mkdir(parents=True)
+    first = source_dir / "effective_angular.pdf"
+    second = source_dir / "ultimate_typescript_handbook.pdf"
+    first.write_text("content", encoding="utf-8")
+    second.write_text("content", encoding="utf-8")
+
+    planner = Planner(
+        SortdocsConfig(),
+        library_dir=source_dir,
+        review_dir=source_dir,
+    )
+
+    actions = planner.plan_files(
+        [
+            (
+                make_discovered_file(first, relative_path=Path("effective_angular.pdf")),
+                make_classification(
+                    category="Books",
+                    subcategory="Programming",
+                    suggested_path="books/programming",
+                    suggested_filename="effective_angular",
+                    tags=["book", "programming", "angular"],
+                ),
+            ),
+            (
+                make_discovered_file(second, relative_path=Path("ultimate_typescript_handbook.pdf")),
+                make_classification(
+                    category="Education",
+                    subcategory="Programming Books",
+                    suggested_path="education/programming_books",
+                    suggested_filename="ultimate_typescript_handbook",
+                    tags=["book", "programming", "typescript"],
+                ),
+            ),
+        ]
+    )
+
+    assert {action.target_directory for action in actions} == {tmp_path / "books" / "programming"}
 
 
 def test_planner_prefers_existing_ai_directory_when_harmonizing_similar_paths(tmp_path: Path) -> None:

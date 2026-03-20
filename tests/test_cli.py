@@ -114,8 +114,9 @@ def test_cli_refuses_project_like_root_by_default(tmp_path: Path, monkeypatch) -
     result = runner.invoke(app, [str(project_dir), "--dry-run"])
 
     assert result.exit_code == 2
-    assert "Refusing to scan project-like root" in result.stdout
-    assert "--allow-project-root" in result.stdout
+    combined_output = result.stdout + result.stderr
+    assert "Refusing to scan project-like root" in combined_output
+    assert "--allow-project-root" in combined_output
 
 
 def test_cli_can_override_project_root_protection(tmp_path: Path, monkeypatch) -> None:

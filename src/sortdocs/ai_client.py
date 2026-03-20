@@ -70,6 +70,8 @@ You must propose:
 Folder selection rules:
 - Use the provided existing_directory_context to reuse existing folder names when appropriate.
 - Avoid creating near-duplicate folders such as travel vs travel_documents when one existing option already fits.
+- Treat suggested_path as relative to the managed root. Do not repeat the managed root name inside suggested_path.
+- If the managed root already implies a collection type such as books, documents, certificates, photos, or similar, prefer subject-based subfolders rather than repeating that collection type.
 - suggested_path must be relative, must not start with / or ~, and must not contain .. segments.
 - If the existing folder context is unclear, return suggested_path=null and rely on category/subcategory.
 - Prefer English folder names when proposing or reusing paths, unless a proper noun or official product name must stay unchanged.

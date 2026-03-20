@@ -59,6 +59,20 @@ If global onboarding storage is used, also confirm:
 - `~/.config/sortdocs/.env` is loaded by the launcher
 - project-local `.env` still overrides or complements it as intended
 
+If you plan to ship the desktop GUI, also confirm the local standalone build:
+
+```bash
+bash scripts/build-macos-app.sh
+open dist/sortdocs.app
+```
+
+Expected behavior:
+
+- the bundle build completes without import errors
+- `dist/sortdocs.app` launches from Finder
+- onboarding still works when no API key is configured
+- the app reads `~/.config/sortdocs/.env` correctly
+
 ## Recommended Manual Checks
 
 - run on a small folder with `--dry-run`

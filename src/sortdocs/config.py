@@ -279,16 +279,21 @@ class SortdocsConfig(BaseModel):
     logging: LoggingSettings = LoggingSettings()
 
 
-def discover_config_path() -> Optional[Path]:
+def discover_config_path(base_dir: Optional[Path] = None) -> Optional[Path]:
+    search_root = (base_dir or Path.cwd()).expanduser().resolve()
     for filename in DEFAULT_CONFIG_FILENAMES:
-        candidate = Path.cwd() / filename
+        candidate = search_root / filename
         if candidate.exists():
             return candidate.resolve()
     return None
 
 
-def load_config(config_path: Optional[Path] = None) -> tuple[SortdocsConfig, Optional[Path]]:
-    resolved_path = config_path.expanduser().resolve() if config_path else discover_config_path()
+def load_config(
+    config_path: Optional[Path] = None,
+    *,
+    base_dir: Optional[Path] = None,
+) -> tuple[SortdocsConfig, Optional[Path]]:
+    resolved_path = config_path.expanduser().resolve() if config_path else discover_config_path(base_dir)
     if resolved_path is None:
         return SortdocsConfig(), None
     if not resolved_path.exists():

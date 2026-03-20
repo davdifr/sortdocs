@@ -26,6 +26,24 @@ def test_load_config_returns_defaults_when_file_is_missing() -> None:
     assert config.planner.target_path_pattern == "{category}/{subcategory}"
 
 
+def test_load_config_discovers_file_relative_to_explicit_base_dir(tmp_path: Path) -> None:
+    config_dir = tmp_path / "Documents"
+    config_dir.mkdir()
+    config_path = config_dir / ".sortdocs.yaml"
+    config_path.write_text(
+        """
+logging:
+  level: DEBUG
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config, resolved_path = load_config(None, base_dir=config_dir)
+
+    assert resolved_path == config_path.resolve()
+    assert config.logging.level == "DEBUG"
+
+
 def test_load_config_parses_new_aliases_and_normalizes_values(tmp_path: Path) -> None:
     config_path = tmp_path / "sortdocs.yaml"
     config_path.write_text(

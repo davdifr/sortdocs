@@ -368,6 +368,7 @@ def _build_directory_context(source_dir: Path) -> dict[str, object]:
                 nested_directories.append(str(child.relative_to(source_dir)))
 
     return {
+        "managed_root_name": source_dir.name,
         "top_level_directories": top_level_directories[:40],
         "nested_directories": nested_directories[:120],
     }

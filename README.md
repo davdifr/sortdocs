@@ -40,6 +40,12 @@ cd sortdocs
 uv sync --extra dev
 ```
 
+To install the optional desktop GUI too:
+
+```bash
+uv sync --extra dev --extra gui
+```
+
 ### With `pip`
 
 ```bash
@@ -48,6 +54,12 @@ cd sortdocs
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
+```
+
+To install the optional desktop GUI too:
+
+```bash
+pip install -e '.[dev,gui]'
 ```
 
 ## Install The Command In Your PATH
@@ -75,6 +87,106 @@ Useful note:
 - the launcher created by `scripts/install-path.sh` automatically loads the project's `.env` file if it exists
 - the launcher also loads `~/.config/sortdocs/.env` if it exists
 - if you run `.venv/bin/sortdocs` directly, the global `~/.config/sortdocs/.env` still works, but a project-local `.env` is not auto-loaded
+
+## Desktop GUI
+
+`sortdocs` also includes an optional macOS desktop GUI built on PySide6.
+
+Install the GUI extra:
+
+```bash
+uv sync --extra gui
+```
+
+or:
+
+```bash
+pip install -e '.[gui]'
+```
+
+Then launch it with:
+
+```bash
+sortdocs-gui
+```
+
+If you prefer launching it from Finder, you can also double-click:
+
+```text
+sortdocs-gui.command
+```
+
+This launcher:
+
+- loads `~/.config/sortdocs/.env` if it exists
+- loads the project `.env` if it exists
+- starts the GUI from the local `.venv`
+- shows setup instructions if the GUI dependencies are not installed yet
+
+The GUI MVP currently supports:
+
+- folder selection
+- API key setup dialog
+- analyze flow with live progress
+- planned actions table
+- details panel for each decision
+- apply flow with confirmation
+
+Current GUI status:
+
+- yes, the GUI MVP is complete
+- it is usable for real local workflows
+- it can now be built locally as an unsigned standalone `.app` bundle
+- code signing, notarization, and DMG packaging are still future improvements
+
+## Standalone macOS App Bundle
+
+If you want a Finder-launchable `.app` bundle instead of running from the terminal, `sortdocs`
+can now build one locally with PyInstaller.
+
+Install the bundle dependencies:
+
+```bash
+uv sync --extra dev --extra gui --extra bundle
+```
+
+or:
+
+```bash
+pip install -e '.[dev,gui,bundle]'
+```
+
+Build the app bundle:
+
+```bash
+bash scripts/build-macos-app.sh
+```
+
+or:
+
+```bash
+make bundle-gui
+```
+
+The bundle is created at:
+
+```text
+dist/sortdocs.app
+```
+
+You can open it with:
+
+```bash
+open dist/sortdocs.app
+```
+
+Important notes:
+
+- bundle creation currently works on macOS only
+- build with Python 3.11+
+- the generated app is unsigned and intended for local use
+- the standalone app reads the global config from `~/.config/sortdocs/.env`
+- if you want the bundle to have API access without terminal setup, save your key through onboarding first
 
 ## OpenAI Setup
 

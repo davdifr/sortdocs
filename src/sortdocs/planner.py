@@ -71,6 +71,37 @@ PATH_HARMONIZATION_SIMILARITY_THRESHOLD = 0.45
 SEMANTIC_TOKEN_ALIASES = {
     "certification": "certificate",
 }
+ROOT_CONTEXT_COLLAPSE_TOKENS = frozenset(
+    {
+        "book",
+        "certificate",
+        "photo",
+        "image",
+        "video",
+        "music",
+        "recipe",
+        "manual",
+        "guide",
+    }
+)
+GENERIC_GROUP_TOKENS = frozenset(
+    {
+        "education",
+        "reference",
+        "general",
+        "misc",
+        "other",
+        "uncategorized",
+        "resource",
+        "resources",
+        "document",
+        "documents",
+        "library",
+        "libraries",
+        "book",
+        "books",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -90,6 +121,7 @@ class DirectorySemanticProfile:
 @dataclass(frozen=True)
 class SuggestedPathProfile:
     category: str
+    category_tokens: frozenset[str]
     normalized_path: str
     parts: tuple[str, ...]
     path_tokens: frozenset[str]
@@ -270,11 +302,11 @@ class Planner:
     def _build_ai_target_directory(self, suggested_path: str, *, warnings: list[str]) -> Path:
         current_dir = self._directories.library_dir
         raw_parts = [part for part in suggested_path.split("/") if part.strip()]
-        sanitized_parts = [
-            sanitize_path_component(part, default="", lowercase=True)
-            for part in raw_parts
-        ]
-        path_parts = [part for part in sanitized_parts if part]
+        path_parts = normalize_path_parts(
+            suggested_path,
+            root_tokens=active_root_context_tokens(self._directories.library_dir),
+            warnings=warnings,
+        )
         if path_parts != raw_parts:
             warnings.append("AI-suggested folder path was sanitized for filesystem safety.")
         if not path_parts:
@@ -304,9 +336,10 @@ class Planner:
         harmonized_items = list(items)
         warnings_by_index: dict[int, list[str]] = {}
         indexed_profiles: list[tuple[int, SuggestedPathProfile]] = []
+        root_tokens = active_root_context_tokens(self._directories.library_dir)
 
         for index, (_, classification) in enumerate(items):
-            profile = build_suggested_path_profile(classification)
+            profile = build_suggested_path_profile(classification, root_tokens=root_tokens)
             if profile is not None:
                 indexed_profiles.append((index, profile))
 
@@ -583,24 +616,42 @@ def directory_semantic_key(value: str) -> str:
     return "_".join(normalized_parts)
 
 
-def build_suggested_path_profile(classification: ClassificationResult) -> Optional[SuggestedPathProfile]:
+def build_suggested_path_profile(
+    classification: ClassificationResult,
+    *,
+    root_tokens: frozenset[str] = frozenset(),
+) -> Optional[SuggestedPathProfile]:
     if not classification.suggested_path or classification.needs_review:
         return None
 
     category = sanitize_path_component(classification.category, default="", lowercase=True)
-    path_parts = normalize_path_parts(classification.suggested_path)
+    path_parts = normalize_path_parts(classification.suggested_path, root_tokens=root_tokens)
     if not category or not path_parts:
         return None
 
+    category_tokens = frozenset(
+        token
+        for token in semantic_tokens_from_value(category)
+        if token not in root_tokens
+    )
     path_tokens = semantic_tokens_from_parts(path_parts)
     evidence_tokens = set(path_tokens)
-    evidence_tokens.update(semantic_tokens_from_value(category))
-    evidence_tokens.update(semantic_tokens_from_value(classification.subcategory))
+    evidence_tokens.update(category_tokens)
+    evidence_tokens.update(
+        token
+        for token in semantic_tokens_from_value(classification.subcategory)
+        if token not in root_tokens
+    )
     for tag in classification.tags:
-        evidence_tokens.update(semantic_tokens_from_value(tag))
+        evidence_tokens.update(
+            token
+            for token in semantic_tokens_from_value(tag)
+            if token not in root_tokens
+        )
 
     return SuggestedPathProfile(
         category=category,
+        category_tokens=category_tokens,
         normalized_path="/".join(path_parts),
         parts=tuple(path_parts),
         path_tokens=frozenset(path_tokens),
@@ -608,14 +659,97 @@ def build_suggested_path_profile(classification: ClassificationResult) -> Option
     )
 
 
-def normalize_path_parts(raw_path: str) -> list[str]:
-    return [
-        sanitized
-        for part in raw_path.split("/")
-        if part.strip()
-        for sanitized in [sanitize_path_component(part, default="", lowercase=True)]
-        if sanitized
+def normalize_path_parts(
+    raw_path: str,
+    *,
+    root_tokens: frozenset[str] = frozenset(),
+    warnings: Optional[list[str]] = None,
+) -> list[str]:
+    normalized_parts: list[str] = []
+    warning_list = warnings if warnings is not None else []
+
+    for raw_part in raw_path.split("/"):
+        if not raw_part.strip():
+            continue
+        sanitized = sanitize_path_component(raw_part, default="", lowercase=True)
+        if not sanitized:
+            continue
+        root_adjusted = strip_root_context_from_part(sanitized, root_tokens=root_tokens)
+        if root_adjusted is None:
+            if root_tokens:
+                warning_list.append(
+                    f"Dropped redundant root folder segment '{sanitized}' from the AI-suggested path."
+                )
+            continue
+        if root_adjusted != sanitized:
+            warning_list.append(
+                f"Removed redundant root context from AI-suggested folder segment '{sanitized}'."
+            )
+        normalized_parts.append(root_adjusted)
+
+    if root_tokens:
+        normalized_parts = collapse_generic_leading_group(normalized_parts, warnings=warning_list)
+
+    return normalized_parts
+
+
+def strip_root_context_from_part(
+    value: str,
+    *,
+    root_tokens: frozenset[str],
+) -> Optional[str]:
+    if not value or not root_tokens:
+        return value or None
+
+    part_tokens = frozenset(semantic_tokens_from_value(value))
+    if part_tokens and part_tokens == root_tokens:
+        return None
+
+    raw_tokens = [token for token in value.split("_") if token]
+    if not raw_tokens:
+        return None
+
+    kept_tokens = [
+        token
+        for token in raw_tokens
+        if _normalize_semantic_token(_singularize_token(token)) not in root_tokens
     ]
+    if not kept_tokens:
+        return None
+    normalized = sanitize_path_component("_".join(kept_tokens), default="", lowercase=True)
+    return normalized or None
+
+
+def active_root_context_tokens(root_dir: Path) -> frozenset[str]:
+    tokens = frozenset(semantic_tokens_from_value(root_dir.name))
+    if len(tokens) != 1:
+        return frozenset()
+    if not tokens <= ROOT_CONTEXT_COLLAPSE_TOKENS:
+        return frozenset()
+    return tokens
+
+
+def collapse_generic_leading_group(
+    path_parts: list[str],
+    *,
+    warnings: Optional[list[str]] = None,
+) -> list[str]:
+    if len(path_parts) < 2:
+        return path_parts
+
+    leading_tokens = frozenset(semantic_tokens_from_value(path_parts[0]))
+    if not leading_tokens or not leading_tokens <= GENERIC_GROUP_TOKENS:
+        return path_parts
+
+    trailing_tokens = semantic_tokens_from_parts(path_parts[1:])
+    if not trailing_tokens:
+        return path_parts
+
+    warning_list = warnings if warnings is not None else []
+    warning_list.append(
+        f"Collapsed generic leading folder '{path_parts[0]}' to keep a collection-specific root simpler."
+    )
+    return path_parts[1:]
 
 
 def semantic_tokens_from_parts(parts: Sequence[str]) -> set[str]:
@@ -672,7 +806,7 @@ def should_harmonize_suggested_paths(
     left: SuggestedPathProfile,
     right: SuggestedPathProfile,
 ) -> bool:
-    if left.category != right.category:
+    if left.category_tokens and right.category_tokens and left.category_tokens != right.category_tokens:
         return False
     return suggested_path_similarity(left, right) >= PATH_HARMONIZATION_SIMILARITY_THRESHOLD
 
