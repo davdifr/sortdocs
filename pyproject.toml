@@ -1,0 +1,76 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sortdocs"
+version = "0.1.0"
+description = "Python CLI for organizing local documents on macOS with content extraction and OpenAI-assisted classification."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "sortdocs contributors" },
+]
+keywords = ["cli", "documents", "openai", "organization", "macos", "python"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: End Users/Desktop",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Utilities",
+]
+dependencies = [
+  "openai>=1.66.0",
+  "pillow>=10.4.0,<12.0",
+  "pydantic>=2.8.0",
+  "pypdf>=5.1.0",
+  "python-docx>=1.1.2",
+  "pyyaml>=6.0.2",
+  "rich>=13.9.4",
+  "typer>=0.12.5,<1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+  "pytest-cov>=5.0.0",
+  "ruff>=0.11.0",
+]
+
+[project.scripts]
+sortdocs = "sortdocs.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sortdocs"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/.env.example",
+  "/README.md",
+  "/Makefile",
+  "/docs",
+  "/pyproject.toml",
+  "/scripts",
+  "/sortdocs.example.yaml",
+  "/src/sortdocs",
+  "/tests",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.uv]
+package = true

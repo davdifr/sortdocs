@@ -1,0 +1,40 @@
+cli:
+  dry_run: false
+  recursive_default: true
+  review_dir: "."
+  library_dir: "."
+  max_files_per_run: 100
+
+extraction:
+  max_excerpt_chars: 4000
+
+openai:
+  model: "gpt-4.1-mini"
+  temperature: 0.1
+  timeout_seconds: 30
+  max_retries: 2
+  backoff_base_seconds: 0.5
+  backoff_max_seconds: 8
+  max_output_tokens: 300
+
+memory:
+  enabled: true
+  filename: ".sortdocs-memory.json"
+  max_token_hints: 8
+  max_path_examples: 12
+  max_examples_per_hint: 3
+
+planner:
+  confidence_threshold: 0.65
+  allowed_categories:
+    - finance
+    - admin
+    - travel
+  folder_pattern: "{category}/{subcategory}"
+  # Alternative examples:
+  # folder_pattern: "{category}"
+  # folder_pattern: "{year}/{category}"
+  max_filename_length: 120
+
+logging:
+  level: INFO
