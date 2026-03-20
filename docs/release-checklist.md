@@ -5,6 +5,7 @@ Practical checklist for preparing `sortdocs` for a local release or an initial p
 ## Before Tagging
 
 - make sure `.env` is not tracked
+- make sure `~/.config/sortdocs/.env` is documented and not committed anywhere
 - verify the version in `pyproject.toml` and `src/sortdocs/__init__.py`
 - update `README.md` if the CLI flow changed
 - review `sortdocs.example.yaml`
@@ -25,6 +26,18 @@ hash -r
 sortdocs . --dry-run
 ```
 
+Also verify onboarding:
+
+```bash
+env -u OPENAI_API_KEY sortdocs .
+```
+
+Expected behavior:
+
+- welcome panel appears
+- API key setup panel appears
+- the tool points users to the official OpenAI API key page
+
 ## Packaging
 
 Confirm the console script is available:
@@ -41,14 +54,23 @@ hash -r
 sortdocs --help
 ```
 
+If global onboarding storage is used, also confirm:
+
+- `~/.config/sortdocs/.env` is loaded by the launcher
+- project-local `.env` still overrides or complements it as intended
+
 ## Recommended Manual Checks
 
 - run on a small folder with `--dry-run`
 - run a confirmed apply on a test folder
+- verify first-run onboarding in a clean shell
+- verify `.sortdocsignore` rules on a test tree
+- verify project-folder protection on a repo-like folder
 - verify filename collision handling
 - verify PDFs with real extractable text
 - verify scanned or image-based PDFs
 - verify files that are already in the correct place
+- verify unchanged files are skipped on a second run
 
 ## After Release
 

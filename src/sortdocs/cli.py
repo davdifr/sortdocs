@@ -18,6 +18,7 @@ from sortdocs.config import ConfigError, SortdocsConfig, load_config
 from sortdocs.executor import ExecutionProgressEvent, ExecutionStage
 from sortdocs.logging_utils import configure_logging
 from sortdocs.models import ExecutionReport
+from sortdocs.onboarding import OnboardingError, maybe_run_first_run_onboarding
 from sortdocs.pipeline import PipelinePlan, PipelineProgressEvent, PipelineResult, SortdocsPipeline
 from sortdocs.planner import display_path
 from sortdocs.scanner import ProjectRootDetectedError
@@ -149,6 +150,11 @@ def sortdocs(
         emit_error(str(exc))
         raise typer.Exit(code=2)
     except ValueError as exc:
+        emit_error(str(exc))
+        raise typer.Exit(code=2)
+    try:
+        maybe_run_first_run_onboarding(get_console())
+    except OnboardingError as exc:
         emit_error(str(exc))
         raise typer.Exit(code=2)
 

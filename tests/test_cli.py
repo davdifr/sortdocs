@@ -13,6 +13,7 @@ runner = CliRunner()
 
 
 def test_cli_dry_run_smoke(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     source = tmp_path / "inbox"
     source.mkdir()
     (source / "invoice.txt").write_text("Invoice for March", encoding="utf-8")
@@ -57,6 +58,7 @@ def test_cli_dry_run_smoke(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_cli_default_flow_prompts_and_aborts_without_changes(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     source = tmp_path / "inbox"
     source.mkdir()
     original_file = source / "invoice.txt"
@@ -102,7 +104,8 @@ def test_cli_default_flow_prompts_and_aborts_without_changes(tmp_path: Path, mon
     assert not (source / "Library").exists()
 
 
-def test_cli_refuses_project_like_root_by_default(tmp_path: Path) -> None:
+def test_cli_refuses_project_like_root_by_default(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     project_dir = tmp_path / "my-app"
     project_dir.mkdir()
     (project_dir / ".git").mkdir()
@@ -116,6 +119,7 @@ def test_cli_refuses_project_like_root_by_default(tmp_path: Path) -> None:
 
 
 def test_cli_can_override_project_root_protection(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     project_dir = tmp_path / "my-app"
     project_dir.mkdir()
     (project_dir / ".git").mkdir()

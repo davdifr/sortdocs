@@ -38,6 +38,13 @@ TMP_PATH="${TARGET_PATH}.tmp.$$"
 cat > "${TMP_PATH}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
+GLOBAL_ENV_PATH="\${HOME}/.config/sortdocs/.env"
+if [[ -f "\${GLOBAL_ENV_PATH}" ]]; then
+  set -a
+  # shellcheck source=/dev/null
+  source "\${GLOBAL_ENV_PATH}"
+  set +a
+fi
 if [[ -f "${PROJECT_ROOT}/.env" ]]; then
   set -a
   # shellcheck source=/dev/null
