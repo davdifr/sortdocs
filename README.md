@@ -1,34 +1,34 @@
 # sortdocs
 
-`sortdocs` e un organizer CLI in Python per macOS che riordina documenti locali in base al contenuto del file, ai metadati e alla classificazione tramite OpenAI.
+`sortdocs` is a Python CLI tool for macOS that organizes local documents based on file content, metadata, and OpenAI-powered classification.
 
-Il flusso e pensato per essere semplice:
+The workflow is intentionally simple:
 
-1. entri nella cartella da riordinare
-2. lanci `sortdocs .`
-3. il tool scansiona ricorsivamente, mostra il piano e chiede conferma
-4. se confermi, sposta e rinomina i file in modo sicuro
+1. move into the folder you want to organize
+2. run `sortdocs .`
+3. the tool scans recursively, builds a plan, and asks for confirmation
+4. if you confirm, it safely moves and renames files
 
-## Caratteristiche
+## Features
 
-- CLI installabile come comando `sortdocs`
-- scansione ricorsiva di default
-- supporto iniziale per `pdf`, `txt`, `md`, `jpg`, `png`, `docx`
-- classificazione con OpenAI Responses API
-- output terminale leggibile con piano e riepilogo
-- guardrail su rename, estensioni, path traversal e collisioni
-- fallback prudente per file poco leggibili o ambigui
-- memoria locale per riusare meglio i path gia scelti
+- installable CLI command: `sortdocs`
+- recursive scanning by default
+- initial support for `pdf`, `txt`, `md`, `jpg`, `png`, `docx`
+- classification via the OpenAI Responses API
+- readable terminal output with a plan and final summary
+- guardrails for renames, extensions, path traversal, and collisions
+- conservative fallback behavior for weak or ambiguous files
+- local memory to improve path reuse across runs
 
-## Requisiti
+## Requirements
 
 - macOS
 - Python 3.11+
 - `OPENAI_API_KEY`
 
-## Installazione
+## Installation
 
-### Con `uv`
+### With `uv`
 
 ```bash
 git clone <your-repo-url> sortdocs
@@ -36,7 +36,7 @@ cd sortdocs
 uv sync --extra dev
 ```
 
-### Con `pip`
+### With `pip`
 
 ```bash
 git clone <your-repo-url> sortdocs
@@ -46,122 +46,122 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 ```
 
-## Comando Nel PATH
+## Install The Command In Your PATH
 
-Per usare `sortdocs` come comando globale:
+To make `sortdocs` available as a global command:
 
 ```bash
 bash scripts/install-path.sh
 hash -r
 ```
 
-Il launcher viene installato in una directory gia presente nel tuo `PATH` e richiama la `.venv` del progetto.
+The launcher is installed into a directory already present in your `PATH` and forwards to the project's `.venv`.
 
-Dopo l’installazione puoi usare:
+After that, you can simply run:
 
 ```bash
 cd ~/Documents
 sortdocs .
 ```
 
-Nota utile:
+Useful note:
 
-- il launcher installato da `scripts/install-path.sh` carica automaticamente il file `.env` del progetto se esiste
-- se usi direttamente `.venv/bin/sortdocs`, invece, devi esportare tu la variabile `OPENAI_API_KEY`
+- the launcher created by `scripts/install-path.sh` automatically loads the project's `.env` file if it exists
+- if you run `.venv/bin/sortdocs` directly, you must export `OPENAI_API_KEY` yourself
 
-## Configurazione OpenAI
+## OpenAI Setup
 
-Parti dal file di esempio:
+Start from the example file:
 
 ```bash
 cp .env.example .env
 ```
 
-Poi imposta la chiave:
+Then set your API key:
 
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 
-## Uso Quotidiano
+## Everyday Usage
 
-### Flusso predefinito
+### Default Flow
 
 ```bash
 cd ~/Documents
 sortdocs .
 ```
 
-Questo comando:
+This command:
 
-- scansiona ricorsivamente la cartella
-- analizza i file supportati
-- mostra il piano delle azioni
-- chiede `Proceed with these actions?`
-- applica le modifiche solo se confermi
+- scans the folder recursively
+- analyzes supported files
+- shows the planned actions
+- asks `Proceed with these actions?`
+- applies changes only if you confirm
 
-### Anteprima senza modifiche
+### Preview Without Changes
 
 ```bash
 sortdocs . --dry-run
 ```
 
-### Limite numero file
+### Limit The Number Of Files
 
 ```bash
 sortdocs . --max-files 50
 ```
 
-### Scansione non ricorsiva
+### Disable Recursive Scanning
 
 ```bash
 sortdocs . --no-recursive
 ```
 
-### Salta il prompt di conferma
+### Skip The Confirmation Prompt
 
 ```bash
 sortdocs . --yes
 ```
 
-### Dettagli tecnici nei log
+### Show Technical Details
 
 ```bash
 sortdocs . --verbose
 ```
 
-In modalita normale, `sortdocs` mostra soprattutto piano e riepilogo finale. I log `INFO` interni del client AI sono nascosti di default per non sporcare l’output.
+In normal mode, `sortdocs` focuses on the plan and final summary. Internal AI `INFO` logs are hidden by default to keep the output clean.
 
-## File Di Configurazione
+## Configuration File
 
-Puoi creare un file `sortdocs.yaml` o `.sortdocs.yaml` nella directory corrente, oppure passarlo con `--config`.
+You can create a `sortdocs.yaml` or `.sortdocs.yaml` file in the current directory, or pass one with `--config`.
 
-Esempio minimo:
+Minimal example:
 
 ```yaml
 cli:
-  dry_run: false
-  recursive_default: true
-  review_dir: "."
-  library_dir: "."
-  max_files_per_run: 100
+    dry_run: false
+    recursive_default: true
+    review_dir: '.'
+    library_dir: '.'
+    max_files_per_run: 100
 
 extraction:
-  max_excerpt_chars: 4000
+    max_excerpt_chars: 4000
 
 openai:
-  model: "gpt-4.1-mini"
-  temperature: 0.1
+    model: 'gpt-4.1-mini'
+    temperature: 0.1
 
 planner:
-  confidence_threshold: 0.65
-  folder_pattern: "{category}/{subcategory}"
+    confidence_threshold: 0.65
+    folder_pattern: '{category}/{subcategory}'
 
 logging:
-  level: INFO
+    level: INFO
 ```
 
-Campi principali:
+Main fields:
 
 - `cli.dry_run`
 - `cli.recursive_default`
@@ -176,39 +176,39 @@ Campi principali:
 - `planner.folder_pattern`
 - `logging.level`
 
-Pattern supportati per le cartelle target:
+Supported folder patterns:
 
 - `{category}/{subcategory}`
 - `{category}`
 - `{year}/{category}`
 
-Vedi anche [sortdocs.example.yaml](/Users/davdifr/Workspace/sortdocs/sortdocs.example.yaml).
+See also [sortdocs.example.yaml](/Users/davdifr/Workspace/sortdocs/sortdocs.example.yaml).
 
-## Comportamento Del Planner
+## Planner Behavior
 
-Per default `sortdocs` lavora direttamente nella cartella che gli passi:
+By default, `sortdocs` works directly inside the folder you pass in:
 
-- non crea automaticamente `Library/` e `Review/` separate
-- crea nuove sottocartelle quando servono
-- prova a riusare cartelle esistenti quando il contesto e equivalente
-- evita collisioni aggiungendo suffissi incrementali
-- non sovrascrive mai file esistenti
+- it does not automatically create separate `Library/` and `Review/` roots
+- it creates new subfolders when needed
+- it tries to reuse equivalent existing folders when the context matches
+- it avoids collisions by adding incremental suffixes
+- it never overwrites existing files
 
-Per file con evidenza debole:
+For files with weak evidence:
 
-- abbassa la confidence
-- puo lasciare il file in posizione con `skip` o `review`
-- usa fallback visuale per PDF-scansione quando non c’e testo estraibile
+- confidence is lowered
+- the file may stay in place with `skip` or `review`
+- scanned PDFs can use a visual fallback through OpenAI when no text is extractable
 
 ## Logging
 
-Comportamento predefinito:
+Default behavior:
 
-- output centrato sul piano e sul riepilogo
-- warning ed errori importanti visibili
-- log informativi interni del client AI nascosti
+- output is centered on the plan and final summary
+- important warnings and errors remain visible
+- internal AI informational logs are hidden
 
-Se vuoi vedere i dettagli tecnici:
+If you want technical details:
 
 ```bash
 sortdocs . --verbose
@@ -218,15 +218,15 @@ sortdocs . --verbose
 
 ### `sortdocs: command not found`
 
-- esegui `bash scripts/install-path.sh`
-- poi esegui `hash -r`
-- in alternativa usa `.venv/bin/sortdocs`
+- run `bash scripts/install-path.sh`
+- then run `hash -r`
+- or use `.venv/bin/sortdocs`
 
 ### `OPENAI_API_KEY is not set`
 
-- crea `.env` a partire da `.env.example`
-- se usi il launcher globale, `.env` viene caricato automaticamente
-- se usi `.venv/bin/sortdocs`, fai:
+- create `.env` from `.env.example`
+- if you use the global launcher, `.env` is loaded automatically
+- if you use `.venv/bin/sortdocs`, run:
 
 ```bash
 set -a
@@ -234,50 +234,48 @@ source .env
 set +a
 ```
 
-### Il piano non e quello atteso
+### The Plan Is Not What You Expected
 
-- prova prima `sortdocs . --dry-run`
-- se vuoi limitare il batch, usa `--max-files`
-- se vuoi piu contesto tecnico, usa `--verbose`
+- try `sortdocs . --dry-run` first
+- use `--max-files` if you want to test a smaller batch
+- use `--verbose` if you want more technical context
 
-### Alcuni PDF non hanno testo
+### Some PDFs Have No Extractable Text
 
-`sortdocs` prova prima l’estrazione testuale. Se il PDF e una scansione, puo usare un fallback visuale via OpenAI per classificare comunque il file in modo prudente.
+`sortdocs` first tries text extraction. If the PDF is image-based or scanned, it can use a visual fallback through OpenAI to classify the file more safely.
 
-## Sviluppo Locale
+## Local Development
 
-Installazione dipendenze:
+Install dependencies:
 
 ```bash
 make install
 ```
 
-Test:
+Run tests:
 
 ```bash
 make test
 ```
 
-Lint:
+Run lint:
 
 ```bash
 make lint
 ```
 
-Esempio rapido:
+Quick example:
 
 ```bash
 make run-example INPUT=~/Documents/Inbox
 ```
 
-## Stato Del Progetto
+## Project Status
 
-Il progetto e pronto per uso locale su macOS come MVP production-minded:
+The project is ready for local macOS usage as a production-minded MVP:
 
-- pipeline completa `scan -> extract -> classify -> plan -> execute`
-- test unitari ed end-to-end
-- launcher nel `PATH`
-- output terminale leggibile
-- guardrail su operazioni filesystem
-
-Per una checklist di rilascio locale vedi [docs/release-checklist.md](/Users/davdifr/Workspace/sortdocs/docs/release-checklist.md).
+- full `scan -> extract -> classify -> plan -> execute` pipeline
+- unit and end-to-end test coverage
+- launcher available in `PATH`
+- readable terminal UI
+- filesystem guardrails around planning and execution

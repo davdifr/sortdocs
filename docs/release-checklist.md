@@ -1,24 +1,24 @@
 # Release Checklist
 
-Checklist pratica per preparare `sortdocs` a un rilascio locale o a una prima condivisione del progetto.
+Practical checklist for preparing `sortdocs` for a local release or an initial project handoff.
 
-## Prima Del Tag
+## Before Tagging
 
-- verifica che `.env` non sia versionato
-- controlla `pyproject.toml` e `src/sortdocs/__init__.py` per la versione
-- aggiorna `README.md` se il flusso CLI e cambiato
-- verifica `sortdocs.example.yaml`
+- make sure `.env` is not tracked
+- verify the version in `pyproject.toml` and `src/sortdocs/__init__.py`
+- update `README.md` if the CLI flow changed
+- review `sortdocs.example.yaml`
 
-## Verifiche Tecniche
+## Technical Verification
 
-Esegui:
+Run:
 
 ```bash
 make test
 make lint
 ```
 
-Verifica anche il comando reale:
+Also verify the real command:
 
 ```bash
 hash -r
@@ -27,13 +27,13 @@ sortdocs . --dry-run
 
 ## Packaging
 
-Verifica che il console script sia presente:
+Confirm the console script is available:
 
 ```bash
 .venv/bin/sortdocs --help
 ```
 
-Verifica il launcher nel `PATH`:
+Confirm the launcher works from `PATH`:
 
 ```bash
 bash scripts/install-path.sh
@@ -41,17 +41,17 @@ hash -r
 sortdocs --help
 ```
 
-## Controlli Manuali Consigliati
+## Recommended Manual Checks
 
-- run su una cartella piccola con `--dry-run`
-- run confermato su una cartella di test
-- verifica collisioni nome
-- verifica PDF con testo
-- verifica PDF-scansione
-- verifica file gia correttamente posizionati
+- run on a small folder with `--dry-run`
+- run a confirmed apply on a test folder
+- verify filename collision handling
+- verify PDFs with real extractable text
+- verify scanned or image-based PDFs
+- verify files that are already in the correct place
 
-## Post-Rilascio
+## After Release
 
-- annota i casi reali che hanno prodotto review non attese
-- aggiorna le euristiche o il prompt AI solo dopo aver raccolto esempi concreti
-- valuta una pulizia o migrazione della memoria locale se cambi la strategia di path
+- note real-world cases that ended up in review unexpectedly
+- adjust heuristics or the AI prompt only after collecting concrete examples
+- consider cleaning or migrating local memory if the path strategy changes
